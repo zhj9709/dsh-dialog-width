@@ -6,58 +6,89 @@
  * 1. Hides DSH's native 40 px hover drag handles. The handles live in a
  *    CSS-Modules file (`ConversationRoot.module.css`) whose class names are
  *    build-time-hashed, so a global stylesheet cannot target them by class —
- *    it MUST use the stable `data-width-handle` attribute selector. (Verified
- *    in DSH 0.1.2-alpha.5: `ConversationRoot.tsx:116-128` renders
- *    `<div data-width-handle="left|right" ...>`; the only other stable
- *    attribute is `data-side`.)
+ *    it MUST use the stable `data-width-handle` attribute selector.
  *
- * 2. Declares the user-chosen px value on `:root` as `--dsh-dialog-width-chat-width`,
- *    then forces the conversation root's `--dsh-chat-user-width` to consume it.
- *    DSH's own `ResizeObserver` (`ConversationRoot.tsx:189-196`) only writes
- *    `--dsh-chat-user-width` from the stored localStorage preference; it never
- *    resets a value it did not write, so a `:root`-level `!important`-free
- *    override survives window resizes with zero inline-style fight.
+ * 2. Drives DSH's own shared width axis instead of forking it. The
+ *    conversation root declares the single source of truth
+ *    (`ConversationRoot.module.css`, `.root`):
  *
- * 3. Mirrors the chosen px into the shared localStorage slot
+ *        --dsh-chat-content-width: var(--dsh-chat-user-width, clamp(680px, calc(var(--dsh-conversation-column-width, 0px) * 0.64), 920px));
+ *        --dsh-composer-card-max-width: calc(var(--dsh-chat-content-width) + 32px);
+ *
+ *    Every consumer — the transcript column (`data-chat-flow`), message
+ *    bubbles, wide-table bleed, the back-to-bottom control, the composer
+ *    card, and the dock/stats line — reads those two variables, so forcing
+ *    `--dsh-chat-user-width` keeps the input card and the conversation area
+ *    in lockstep by construction. The plugin never sets max-widths itself.
+ *
+ * 3. Reproduces DSH's narrow-viewport clamp in CSS. Natively
+ *    (`ConversationRoot.tsx`, `resolveContentWidth`) a stored preference is
+ *    re-clamped against the live column width — published as
+ *    `--dsh-conversation-column-width` by a ResizeObserver — so opening the
+ *    sidebar narrows the content instead of letting it overflow. This module
+ *    declares the same clamp declaratively on the conversation root:
+ *
+ *        --dsh-chat-user-width: min(<width>px, max(640px, calc(var(--dsh-conversation-column-width, 99999px) - 2 * <sideMargin>px)));
+ *
+ *    i.e. the column never claims more than the dialog width, and never
+ *    leaves less than `sideMargin` of whitespace on either side; 640px is
+ *    DSH's own content floor (CONTENT_MIN). The var() substitution happens
+ *    on the conversation root — the same element DSH writes the live column
+ *    width on — so the clamp tracks sidebar toggles and window resizes with
+ *    zero JS. The declaration is `!important` so it also beats DSH's inline
+ *    re-publication of `--dsh-chat-user-width` on the same element.
+ *
+ * 4. Mirrors the chosen px into the shared localStorage slot
  *    (`dsh.conversation.contentWidth`) so toggling plugin-width OFF surfaces
  *    the user's last choice in the native drag handles — the switch is
  *    value-preserving in both directions.
  *
  * When the user turns the feature OFF, the installer disposes: the handle
- * rule is removed, the `:root` var is cleared, and the native handles take
+ * rule and the width-axis override are removed and the native handles take
  * over from whatever px the user last picked.
+ *
+ * The conversation root cannot be targeted by a stable attribute of its own
+ * (it only carries `data-phase`), so the override anchors on the stable
+ * `data-conversation-scroll` descendant: `div:has([data-conversation-scroll])`
+ * matches exactly the ancestors of the scroll body, and the innermost
+ * declaration that matters — the conversation root — is where DSH publishes
+ * the live column width.
  * @module dsh-dialog-width/client/conversation-width
  */
 
 /**
  * localStorage slot the native WidthHandle reads/writes
- * (`ConversationRoot.tsx:17` in DSH 0.1.2-alpha.5). Kept in sync with the
- * server-side constant in src/config.ts — duplicated here because the client
- * tsconfig's rootDir is `src/client` and cannot reach up into `src/`.
+ * (`ConversationRoot.tsx` WIDTH_PREF_KEY). Kept in sync with the server-side
+ * constant in src/config.ts — duplicated here because the client tsconfig's
+ * rootDir is `src/client` and cannot reach up into `src/`.
  */
 const CONVERSATION_WIDTH_STORAGE_KEY = 'dsh.conversation.contentWidth'
 
 /** Stable attribute selector for the native WidthHandle strips (CSS-Modules-hashed class). */
 const HANDLE_HIDE_RULE = '[data-width-handle]{display:none !important}'
 
+/** DSH's own content floor (`ConversationRoot.tsx` CONTENT_MIN). */
+const CONTENT_MIN_PX = 640
+
 /**
- * CSS injected into <head> while plugin-width is on. Two jobs:
+ * CSS injected into <head> while plugin-width is on:
  * - hide the native handles (hashed class → attribute selector)
- * - force the conversation content axis to the plugin's px via a `:root` var
- *   that the conversation root's `--dsh-chat-user-width` clamp expression
- *   cannot override (the clamp only fires when `--dsh-chat-user-width` is
- *   unset; setting it on the root wins the cascade).
+ * - clamp DSH's user-width preference to the plugin's dialog width, keeping
+ *   at least `sideMargin` of whitespace per side as the live column narrows
+ * - mirror the raw px on :root (`--dsh-dialog-width-chat-width`) for any
+ *   consumer that reads the legacy var from the document root.
  */
-function buildWidthCss(widthPx: number): string {
+function buildWidthCss(widthPx: number, sideMargin: number): string {
   return `
 ${HANDLE_HIDE_RULE}
+div:has([data-conversation-scroll]){--dsh-chat-user-width:min(${widthPx}px, max(${CONTENT_MIN_PX}px, calc(var(--dsh-conversation-column-width, 99999px) - ${sideMargin * 2}px))) !important}
 :root{--dsh-dialog-width-chat-width:${widthPx}px}
 `
 }
 
 export interface ConversationWidthController {
-  /** Update the applied width (px) without reinstalling the stylesheet. */
-  setWidth(widthPx: number): void
+  /** Update the applied width / side margin (px) without reinstalling the stylesheet. */
+  setWidth(widthPx: number, sideMargin: number): void
   /** Remove the injected stylesheet + clear the :root var. */
   dispose(): void
 }
@@ -66,9 +97,10 @@ export interface ConversationWidthController {
  * Install the width-override stylesheet. Idempotent: a second call with the
  * same id returns the existing controller.
  * @param widthPx - the plugin's chosen column width in px.
+ * @param sideMargin - whitespace in px to keep on each side of the column.
  * @returns a controller exposing `setWidth` + `dispose`.
  */
-export function installConversationWidthStyles(widthPx: number): ConversationWidthController {
+export function installConversationWidthStyles(widthPx: number, sideMargin: number): ConversationWidthController {
   const id = 'dsh-dialog-width-conversation-width'
   let style = document.querySelector<HTMLStyleElement>(`style[data-plugin-css="${id}"]`)
   if (style === null) {
@@ -82,17 +114,17 @@ export function installConversationWidthStyles(widthPx: number): ConversationWid
   // the user's last choice in the native drag handles.
   try { localStorage.setItem(CONVERSATION_WIDTH_STORAGE_KEY, `${widthPx}`) } catch { /* storage may be disabled; ignore */ }
 
-  const apply = (px: number): void => {
-    style!.textContent = buildWidthCss(px)
+  const apply = (px: number, margin: number): void => {
+    style!.textContent = buildWidthCss(px, margin)
     // Belt-and-suspenders: also set the var directly on :root in case any
-    // consumer reads the property via JS rather than via CSS cascade.
+    // consumer reads the legacy var via JS rather than via CSS cascade.
     document.documentElement.style.setProperty('--dsh-dialog-width-chat-width', `${px}px`)
   }
-  apply(widthPx)
+  apply(widthPx, sideMargin)
 
   return {
-    setWidth: (px: number): void => {
-      apply(px)
+    setWidth: (px: number, margin: number): void => {
+      apply(px, margin)
       try { localStorage.setItem(CONVERSATION_WIDTH_STORAGE_KEY, `${px}`) } catch { /* ignore */ }
     },
     dispose: (): void => {

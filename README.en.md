@@ -9,12 +9,13 @@ A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH)
 - **Dialog width (default 748 px = DSH's stock column)** — in the Layout settings group, type a value (600–1600, step 20) or pick one of three presets (Default · 748 / Wide · 880 / Extra wide · 1024). The column width is applied to the message column, the composer card, and the stats line.
   - **Plugin width control (default on)** — a master toggle in the same Layout group. **On**: the plugin's input/presets drive the column and **hide DSH's native drag handles**. **Off**: DSH's native handles own the column, and the plugin's width input becomes a **read-only mirror** of whatever the native handles produce. In both states the user's last px is written to the shared `localStorage` slot, so **toggling back and forth never loses the width**.
 
-All changes apply **live** — no reload needed. The same values can be hand-edited in the settings document:
+- **Side margin** — blank width (px) on both sides of the conversation column. Visible when the sidebar opens and the column flex-shrinks. Minimum 32 px.
 
 ```yaml
 dialog-width:
   dialogWidth: 880        # defaults to 748; 600–1600
   usePluginWidth: true    # defaults to true (plugin width control on); false uses DSH's native drag handles
+  sideMargin: 50          # defaults to 50; minimum 32. Side margin (px) on both sides of the column
 ```
 
 Settings entry: **Settings → Dialog width**.

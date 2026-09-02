@@ -31,6 +31,8 @@ interface TweaksValue {
   dialogWidth?: number
   /** Whether the plugin's width control owns the column (vs. native handles). */
   usePluginWidth?: boolean
+  /** Side margin in px; minimum 32. Keep in sync with src/config.ts. */
+  sideMargin?: number
 }
 
 interface ResolvedTweaks {
@@ -38,6 +40,8 @@ interface ResolvedTweaks {
   dialogWidth: number
   /** Whether the plugin's width control owns the column (vs. native handles). */
   usePluginWidth: boolean
+  /** Side margin in px applied to both sides of the conversation column. */
+  sideMargin: number
 }
 
 interface DialogWidthSnapshot {
@@ -63,6 +67,8 @@ const en = {
   usePluginWidthHint: 'When ON, the width input / presets above drive the column and DSH\'s native drag handles are hidden. When OFF, DSH\'s native handles own the column; the width input mirrors their value.',
   usePluginWidthOn: 'On',
   usePluginWidthOff: 'Off',
+  sideMargin: 'Side margin',
+  sideMarginHint: 'Whitespace in px kept on each side of the conversation area. The column is clamped to the dialog width and narrows when the sidebar opens or the window shrinks, never hugging the edges. Minimum 32 px.',
   defaultAction: 'Default',
   applied: 'Applied',
   unavailable: 'Settings unavailable.',
@@ -86,6 +92,8 @@ const zh: Record<LocaleKey, string> = {
   usePluginWidthHint: '开启时，上方宽度输入 / 预设驱动列宽，并隐藏 DSH 原生的拖拽手柄；关闭时，DSH 原生手柄接管列宽，宽度输入同步显示当前值。',
   usePluginWidthOn: '开启',
   usePluginWidthOff: '关闭',
+  sideMargin: '两侧边距',
+  sideMarginHint: '会话区域两侧保留的空白（px）。列宽被钳制为对话框宽度，侧边栏打开或窗口缩小时内容会收窄，不会贴住边缘。最低 32 px。',
   defaultAction: '默认',
   applied: '已应用',
   unavailable: '设置暂不可用。',
@@ -113,90 +121,64 @@ function resolveValue(value: TweaksValue | undefined): ResolvedTweaks {
   return {
     dialogWidth: resolveDialogWidth(value?.dialogWidth),
     usePluginWidth: value?.usePluginWidth ?? true,
+    sideMargin: value?.sideMargin ?? 40,
   }
 }
 
-function buildRuntimeCss(value: ResolvedTweaks): string {
-  const rules: string[] = []
-  // Dialog width: when plugin-width is on AND the width leaves the stock 748,
-  // widen the message column AND tell the stock wide-table bleed math about
-  // it: DSH sizes a wide table's side overhang from --dsh-chat-content-width
-  // (pinned to 748px on the conversation root). Widening the column without
-  // syncing the var pushes every wide table (W − 748)/2 px past the message
-  // area's right edge.
-  if (value.usePluginWidth && value.dialogWidth !== DEFAULT_DIALOG_WIDTH) {
-    const width = value.dialogWidth
-    rules.push(`[data-chat-flow]{max-width:${width}px !important;--dsh-chat-content-width:${width}px}`)
-    // The composer card carries the same column + 32px padding (748→780);
-    // widen it through its stable data attribute so the input bar matches.
-    rules.push(`[data-composer-card="true"]{max-width:${width + 32}px !important}`)
-    // The conversation root redefines --dsh-composer-card-max-width locally,
-    // so a :root override never reaches inside it; re-declare it on the
-    // composer seat (stable anchor, covers the composer stack incl. plugins)
-    // so width-derived consumers there agree with the widened card.
-    rules.push(`[data-composer-seat]{--dsh-composer-card-max-width:${width + 32}px}`)
-    // The conversation stats line under the composer (conversation.composer.dock)
-    // keeps its own 748px column; widen it together with the dialog.
-    rules.push(`[data-slot="conversation.composer.dock"] > div{max-width:${width + 32}px !important}`)
-    rules.push(`:root{--dsh-composer-card-max-width:${width + 32}px}`)
-  }
-  return rules.join('\n')
-}
+/**
+ * Side margin in px (min 32). Keep in sync with src/config.ts — duplicated
+ * because the client tsconfig's rootDir is `src/client`.
+ */
+const DEFAULT_SIDE_MARGIN = 50
+const MIN_SIDE_MARGIN = 32
 
-function runtimeStyleElement(): HTMLStyleElement {
-  const id = 'dsh-dialog-width-runtime'
-  let style = document.querySelector<HTMLStyleElement>(`style[data-plugin-css="${id}"]`)
-  if (style === null) {
-    style = document.createElement('style')
-    style.dataset.plugin = 'dsh-dialog-width'
-    style.dataset.pluginCss = id
-    document.head.appendChild(style)
-  }
-  return style
+function resolveSideMargin(value: number | undefined): number {
+  if (typeof value === 'number') return Math.max(MIN_SIDE_MARGIN, Math.round(value))
+  return DEFAULT_SIDE_MARGIN
 }
 
 const BASE_CSS = `
-.dut-settings{display:grid;gap:8px;max-width:680px;padding:4px 2px 24px;color:var(--dsw-alias-label-primary)}
-.dut-settings-header{display:flex;align-items:flex-start;gap:10px;padding:2px 2px 0}
-.dut-logo{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent),transparent);font-size:15px;line-height:1}
-.dut-settings-header h2{font-size:16px;letter-spacing:-.01em;margin:0 0 2px}
-.dut-settings-header p{max-width:600px;margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.45}
-.dut-panel{display:grid;gap:0;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);overflow:hidden}
-.dut-section-label{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);padding:9px 16px 4px}
-.dut-field{display:grid;gap:6px;padding:7px 16px 10px}
-.dut-field+.dut-field{border-top:1px solid var(--dsw-alias-border-l1)}
-.dut-field-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.dut-field-top>span{font-size:13.5px;font-weight:600}
-.dut-label{display:inline-flex;align-items:center;gap:6px}
-.dut-hint{flex:none;display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font-size:9.5px;font-weight:600;font-style:normal;line-height:1;cursor:help;user-select:none;transition:color .15s ease,border-color .15s ease}
-.dut-hint:hover,.dut-hint:focus-visible{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
-.dut-hint-pop{position:fixed;z-index:9999;width:max-content;max-width:300px;padding:8px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.14);pointer-events:none}
-.dut-controls{display:flex;align-items:center;gap:8px}
-.dut-stepper{display:inline-flex;align-items:center;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
-.dut-stepper button{width:28px;height:28px;border:none;background:transparent;color:inherit;font-size:15px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .15s ease}
-.dut-stepper button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
-.dut-stepper button:disabled{opacity:.35;cursor:default}
-.dut-stepper input{box-sizing:border-box;width:60px;height:28px;border:none;border-left:1px solid var(--dsw-alias-border-l1);border-right:1px solid var(--dsw-alias-border-l1);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:center;-moz-appearance:textfield}
-.dut-stepper input::-webkit-outer-spin-button,.dut-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.dut-stepper input:focus{outline:none}
-.dut-seg{display:inline-flex;padding:3px;gap:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
-.dut-seg button{border:none;border-radius:7px;padding:5px 12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer;transition:background .15s ease,color .15s ease}
-.dut-seg button:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
-.dut-seg button.dut-seg-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600;box-shadow:none}
-.dut-seg button.dut-seg-active:hover:not(:disabled){color:var(--dsw-alias-state-business-primary)}
-.dut-seg button:disabled{opacity:.45;cursor:default}
-.dut-presets{display:inline-flex;flex-wrap:wrap;margin-top:2px}
-.dut-btn{display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
-.dut-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dut-btn.dut-btn-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent);color:var(--dsw-alias-state-business-primary)}
-.dut-btn.dut-btn-active:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 18%,transparent);color:var(--dsw-alias-state-business-primary)}
-.dut-btn:disabled{opacity:.4;cursor:default}
-.dut-status{justify-self:start;font-size:11.5px;padding:3px 10px;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);color:var(--dsw-alias-state-success-primary);animation:dut-fadein .18s ease}
-@keyframes dut-fadein{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
-.dut-loading{padding:16px;border-radius:12px;background:var(--dsw-alias-bg-layer-2);font-size:12px;color:var(--dsw-alias-label-secondary)}
-.dut-alert{padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.5}
-.dut-alert.warning{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);color:var(--dsw-alias-state-warn-label)}
-.dut-alert.error{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
+.ddw-settings{display:grid;gap:8px;max-width:680px;padding:4px 2px 24px;color:var(--dsw-alias-label-primary)}
+.ddw-settings-header{display:flex;align-items:flex-start;gap:10px;padding:2px 2px 0}
+.ddw-logo{flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;border:1px solid var(--dsw-alias-border-l1);background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-state-business-primary) 16%,transparent),transparent);font-size:15px;line-height:1}
+.ddw-settings-header h2{font-size:16px;letter-spacing:-.01em;margin:0 0 2px}
+.ddw-settings-header p{max-width:600px;margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.45}
+.ddw-panel{display:grid;gap:0;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-shadow-lv1);overflow:hidden}
+.ddw-section-label{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary);padding:9px 16px 4px}
+.ddw-field{display:grid;gap:6px;padding:7px 16px 10px}
+.ddw-field+.ddw-field{border-top:1px solid var(--dsw-alias-border-l1)}
+.ddw-field-top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.ddw-field-top>span{font-size:13.5px;font-weight:600}
+.ddw-label{display:inline-flex;align-items:center;gap:6px}
+.ddw-hint{flex:none;display:inline-grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-tertiary);font-size:9.5px;font-weight:600;font-style:normal;line-height:1;cursor:help;user-select:none;transition:color .15s ease,border-color .15s ease}
+.ddw-hint:hover,.ddw-hint:focus-visible{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}
+.ddw-hint-pop{position:fixed;z-index:9999;width:max-content;max-width:300px;padding:8px 10px;border-radius:8px;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-size:11.5px;line-height:1.5;box-shadow:0 4px 16px rgba(0,0,0,.14);pointer-events:none}
+.ddw-controls{display:flex;align-items:center;gap:8px}
+.ddw-stepper{display:inline-flex;align-items:center;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
+.ddw-stepper button{width:28px;height:28px;border:none;background:transparent;color:inherit;font-size:15px;font-weight:500;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .15s ease}
+.ddw-stepper button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
+.ddw-stepper button:disabled{opacity:.35;cursor:default}
+.ddw-stepper input{box-sizing:border-box;width:60px;height:28px;border:none;border-left:1px solid var(--dsw-alias-border-l1);border-right:1px solid var(--dsw-alias-border-l1);background:transparent;color:inherit;font:inherit;font-size:13px;text-align:center;-moz-appearance:textfield}
+.ddw-stepper input::-webkit-outer-spin-button,.ddw-stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.ddw-stepper input:focus{outline:none}
+.ddw-seg{display:inline-flex;padding:3px;gap:3px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
+.ddw-seg button{border:none;border-radius:7px;padding:5px 12px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;cursor:pointer;transition:background .15s ease,color .15s ease}
+.ddw-seg button:hover:not(:disabled){color:var(--dsw-alias-label-primary)}
+.ddw-seg button.ddw-seg-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);color:var(--dsw-alias-state-business-primary);font-weight:600;box-shadow:none}
+.ddw-seg button.ddw-seg-active:hover:not(:disabled){color:var(--dsw-alias-state-business-primary)}
+.ddw-seg button:disabled{opacity:.45;cursor:default}
+.ddw-presets{display:inline-flex;flex-wrap:wrap;margin-top:2px}
+.ddw-btn{display:inline-flex;align-items:center;height:26px;padding:0 12px;border-radius:999px;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11.5px;cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease}
+.ddw-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.ddw-btn.ddw-btn-active{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 12%,transparent);border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 45%,transparent);color:var(--dsw-alias-state-business-primary)}
+.ddw-btn.ddw-btn-active:hover{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 18%,transparent);color:var(--dsw-alias-state-business-primary)}
+.ddw-btn:disabled{opacity:.4;cursor:default}
+.ddw-status{justify-self:start;font-size:11.5px;padding:3px 10px;border-radius:999px;background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 12%,transparent);color:var(--dsw-alias-state-success-primary);animation:ddw-fadein .18s ease}
+@keyframes ddw-fadein{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
+.ddw-loading{padding:16px;border-radius:12px;background:var(--dsw-alias-bg-layer-2);font-size:12px;color:var(--dsw-alias-label-secondary)}
+.ddw-alert{padding:10px 12px;border-radius:10px;font-size:12px;line-height:1.5}
+.ddw-alert.warning{background:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,transparent);color:var(--dsw-alias-state-warn-label)}
+.ddw-alert.error{background:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,transparent);color:var(--dsw-alias-state-error-primary)}
 `
 
 function installBaseStyles(): () => void {
@@ -335,7 +317,7 @@ function Hint({ text }: { text: string }) {
     <>
       <span
         ref={anchorRef}
-        className="dut-hint"
+        className="ddw-hint"
         role="note"
         aria-label={text}
         tabIndex={0}
@@ -345,7 +327,7 @@ function Hint({ text }: { text: string }) {
         onBlur={() => { setOpen(false) }}
       >i</span>
       {open && createPortal(
-        <div ref={popRef} className="dut-hint-pop" style={{ top: pos.top, left: pos.left }}>{text}</div>,
+        <div ref={popRef} className="ddw-hint-pop" style={{ top: pos.top, left: pos.left }}>{text}</div>,
         document.body,
       )}
     </>
@@ -371,8 +353,10 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
   }, [status])
 
   const [widthDraft, setWidthDraft] = useState<string>(String(resolved.dialogWidth))
+  const [marginDraft, setMarginDraft] = useState<string>(String(resolved.sideMargin))
 
   useEffect(() => { setWidthDraft(String(resolved.dialogWidth)) }, [resolved.dialogWidth])
+  useEffect(() => { setMarginDraft(String(resolved.sideMargin)) }, [resolved.sideMargin])
 
   const commitDialogWidth = (raw: string): void => {
     setWidthDraft(raw)
@@ -398,43 +382,58 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
     void controller.set('usePluginWidth', value).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
   }
 
+  const commitSideMargin = (raw: string): void => {
+    setMarginDraft(raw)
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return
+    const clamped = Math.max(32, Math.round(parsed))
+    setMarginDraft(String(clamped))
+    void controller.set('sideMargin', clamped).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
+  const stepSideMargin = (delta: number): void => {
+    const next = Math.max(32, resolved.sideMargin + delta)
+    setMarginDraft(String(next))
+    void controller.set('sideMargin', next).then(() => { setStatus('applied') }).catch(() => { setStatus('unavailable') })
+  }
+
   if (state.status === 'loading' && state.value === undefined) {
-    return <div className="dut-settings"><div className="dut-loading">{t('loading')}</div></div>
+    return <div className="ddw-settings"><div className="ddw-loading">{t('loading')}</div></div>
   }
   if (state.status === 'error') {
-    return <div className="dut-settings"><div className="dut-alert error">{t('unavailable')}</div></div>
+    return <div className="ddw-settings"><div className="ddw-alert error">{t('unavailable')}</div></div>
   }
 
   return (
-    <div className="dut-settings">
-      <header className="dut-settings-header">
-        <div className="dut-logo">📐</div>
+    <div className="ddw-settings">
+      <header className="ddw-settings-header">
+        <div className="ddw-logo">📐</div>
         <div>
           <h2>{t('settingsTitle')}</h2>
           <p>{t('settingsIntro')}</p>
         </div>
       </header>
-      {!writable ? <div className="dut-alert warning">{t('readOnly')}</div> : null}
-      {status === undefined ? null : <div className="dut-status">{t(status)}</div>}
+      {!writable ? <div className="ddw-alert warning">{t('readOnly')}</div> : null}
+      {status === undefined ? null : <div className="ddw-status">{t(status)}</div>}
 
-      <section className="dut-panel">
-        <div className="dut-section-label">{t('sectionLayout')}</div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('usePluginWidth')}<Hint text={t('usePluginWidthHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-seg">
-                <button type="button" className={resolved.usePluginWidth ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setUsePluginWidth(true) }}>{t('usePluginWidthOn')}</button>
-                <button type="button" className={!resolved.usePluginWidth ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { setUsePluginWidth(false) }}>{t('usePluginWidthOff')}</button>
+      <section className="ddw-panel">
+        <div className="ddw-section-label">{t('sectionLayout')}</div>
+        <div className="ddw-field">
+          <div className="ddw-field-top">
+            <span className="ddw-label">{t('usePluginWidth')}<Hint text={t('usePluginWidthHint')} /></span>
+            <div className="ddw-controls">
+              <div className="ddw-seg">
+                <button type="button" className={resolved.usePluginWidth ? 'ddw-seg-active' : ''} disabled={!writable} onClick={() => { setUsePluginWidth(true) }}>{t('usePluginWidthOn')}</button>
+                <button type="button" className={!resolved.usePluginWidth ? 'ddw-seg-active' : ''} disabled={!writable} onClick={() => { setUsePluginWidth(false) }}>{t('usePluginWidthOff')}</button>
               </div>
             </div>
           </div>
         </div>
-        <div className="dut-field">
-          <div className="dut-field-top">
-            <span className="dut-label">{t('dialogWidth')}<Hint text={t('dialogWidthHint')} /></span>
-            <div className="dut-controls">
-              <div className="dut-stepper">
+        <div className="ddw-field">
+          <div className="ddw-field-top">
+            <span className="ddw-label">{t('dialogWidth')}<Hint text={t('dialogWidthHint')} /></span>
+            <div className="ddw-controls">
+              <div className="ddw-stepper">
                 <button type="button" aria-label="−" disabled={!writable || resolved.dialogWidth <= MIN_DIALOG_WIDTH} onClick={() => { stepDialogWidth(-20) }}>−</button>
                 <input
                   type="number"
@@ -451,11 +450,32 @@ function SettingsSection({ controller, t }: SettingsSectionProps) {
               </div>
             </div>
           </div>
-          <div className="dut-presets">
-            <div className="dut-seg">
-              <button type="button" className={resolved.dialogWidth === 880 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(880) }}>{t('presetWide')} · 880</button>
-              <button type="button" className={resolved.dialogWidth === 1024 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(1024) }}>{t('presetWideXl')} · 1024</button>
-              <button type="button" className={resolved.dialogWidth === 748 ? 'dut-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(748) }}>{t('presetDefault')} · 748</button>
+          <div className="ddw-presets">
+            <div className="ddw-seg">
+              <button type="button" className={resolved.dialogWidth === 880 ? 'ddw-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(880) }}>{t('presetWide')} · 880</button>
+              <button type="button" className={resolved.dialogWidth === 1024 ? 'ddw-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(1024) }}>{t('presetWideXl')} · 1024</button>
+              <button type="button" className={resolved.dialogWidth === 748 ? 'ddw-seg-active' : ''} disabled={!writable} onClick={() => { applyWidthPreset(748) }}>{t('presetDefault')} · 748</button>
+            </div>
+          </div>
+        </div>
+        <div className="ddw-field">
+          <div className="ddw-field-top">
+            <span className="ddw-label">{t('sideMargin')}<Hint text={t('sideMarginHint')} /></span>
+            <div className="ddw-controls">
+              <div className="ddw-stepper">
+                <button type="button" aria-label="−" disabled={!writable || resolved.sideMargin <= 32} onClick={() => { stepSideMargin(-4) }}>−</button>
+                <input
+                  type="number"
+                  min={32}
+                  step={4}
+                  value={marginDraft}
+                  disabled={!writable}
+                  onChange={(event) => { setMarginDraft(event.target.value) }}
+                  onBlur={(event) => { commitSideMargin(event.target.value) }}
+                  onKeyDown={(event) => { if (event.key === 'Enter') commitSideMargin((event.target as HTMLInputElement).value) }}
+                />
+                <button type="button" aria-label="+" disabled={!writable} onClick={() => { stepSideMargin(4) }}>+</button>
+              </div>
             </div>
           </div>
         </div>
@@ -471,34 +491,24 @@ export function apply(ctx: ClientContext): void {
 
   const controller = new SettingsClient()
 
-  ctx.effect(() => {
-    const applyCss = (): void => {
-      const state = controller.getSnapshot()
-      if (state.status === 'ready') {
-        runtimeStyleElement().textContent = buildRuntimeCss(resolveValue(state.value))
-      }
-    }
-    applyCss()
-    const dispose = controller.subscribe(applyCss)
-    void controller.load()
-    return dispose
-  }, 'dsh-dialog-width: runtime css')
-
-  // Conversation-width override: when plugin-width is on, install the
-  // handle-hiding + width-axis CSS; when off, dispose it. The controller's
-  // subscribe re-runs this effect on every settings change, so the
-  // install/dispose tracks the toggle live.
+  // Width-axis override: when plugin-width is on, install the handle-hiding
+  // + user-width-clamp CSS (see conversation-width.ts — it drives DSH's own
+  // shared width axis, so the transcript, composer card, dock, and turn
+  // navigator all follow the stock math); when off, dispose it. The
+  // subscribe callback re-runs on every settings change, so width,
+  // sideMargin, and the toggle all apply live.
   ctx.effect(() => {
     let widthController: ReturnType<typeof installConversationWidthStyles> | undefined
     const sync = (): void => {
       const value = controller.getSnapshot().value
       const usePlugin = value?.usePluginWidth ?? true
       const width = resolveDialogWidth(value?.dialogWidth)
+      const sideMargin = resolveSideMargin(value?.sideMargin)
       if (usePlugin) {
         if (widthController === undefined) {
-          widthController = installConversationWidthStyles(width)
+          widthController = installConversationWidthStyles(width, sideMargin)
         } else {
-          widthController.setWidth(width)
+          widthController.setWidth(width, sideMargin)
         }
       } else if (widthController !== undefined) {
         widthController.dispose()
@@ -506,6 +516,7 @@ export function apply(ctx: ClientContext): void {
       }
     }
     sync()
+    void controller.load()
     return controller.subscribe(sync)
   }, 'dsh-dialog-width: conversation width')
 

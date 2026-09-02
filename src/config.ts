@@ -32,6 +32,13 @@ export interface DialogWidthConfig {
    * on restores the same px.
    */
   usePluginWidth?: boolean
+  /**
+   * Whitespace in px kept on each side of the conversation area. The width
+   * axis is clamped to min(dialogWidth, liveColumn − 2 × sideMargin), so the
+   * content narrows — together with the composer card — when the sidebar
+   * opens or the window shrinks, never hugging the edges. Minimum 32 px.
+   */
+  sideMargin?: number
 }
 
 /** Dialog width in px. 600 is the chat-column minimum, 1600 the soft cap. */
@@ -47,6 +54,11 @@ export const DEFAULT_DIALOG_WIDTH = 748
  */
 export const DEFAULT_USE_PLUGIN_WIDTH = true
 
+/** Default side margin in px — 50 gives a comfortable gap on each side. */
+export const DEFAULT_SIDE_MARGIN = 50
+/** Minimum side margin in px — below 32 the gap becomes too tight. */
+export const MIN_SIDE_MARGIN = 32
+
 /**
  * localStorage slot the native WidthHandle reads/writes; kept here so a
  * future rename of the host key only needs touching one place. We mirror
@@ -59,6 +71,7 @@ export const CONVERSATION_WIDTH_STORAGE_KEY = 'dsh.conversation.contentWidth'
 export const Config: Schema<DialogWidthConfig> = z.object({
   dialogWidth: z.number().min(MIN_DIALOG_WIDTH).max(MAX_DIALOG_WIDTH).default(DEFAULT_DIALOG_WIDTH),
   usePluginWidth: z.boolean().default(DEFAULT_USE_PLUGIN_WIDTH),
+  sideMargin: z.number().min(MIN_SIDE_MARGIN).default(DEFAULT_SIDE_MARGIN),
 })
 
 /** Configuration after static validation, with every default materialized. */
@@ -67,13 +80,16 @@ export interface ResolvedDialogWidthConfig {
   dialogWidth: number
   /** Whether the plugin's width control owns the column (vs. native handles). */
   usePluginWidth: boolean
+  /** Side margin in px applied to both sides of the conversation column. */
+  sideMargin: number
 }
 
 /** Resolve a partial config into a fully defaulted value. */
 export function resolveConfig(config: DialogWidthConfig = {}): ResolvedDialogWidthConfig {
   const dialogWidth = resolveDialogWidth(config.dialogWidth)
   const usePluginWidth = config.usePluginWidth ?? DEFAULT_USE_PLUGIN_WIDTH
-  return { dialogWidth, usePluginWidth }
+  const sideMargin = config.sideMargin ?? DEFAULT_SIDE_MARGIN
+  return { dialogWidth, usePluginWidth, sideMargin }
 }
 
 /** Normalize a dialog width value (legacy strings included) to px. */
