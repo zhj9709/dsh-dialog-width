@@ -1,0 +1,12 @@
+# dsh-dialog-width bundle patch
+#
+# Declared by `dsh.bundle.patch` in package.json: when the plugin is installed
+# through the official CLI —
+#
+#   dsh plugin --profile <name> add dsh-dialog-width
+#
+# — the command appends `dsh-dialog-width` to the profile's bundle stack and this
+# patch mounts the server-side plugin row.
+- insert:
+    - id: dialog-width
+      name: 'dsh-dialog-width'
