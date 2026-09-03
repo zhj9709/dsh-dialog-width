@@ -1,6 +1,6 @@
 # dsh-dialog-width
 
-> **版本要求**：需要 **DSH v0.1.2-alpha.5 及以上**。
+> **版本要求**：需要 **DSH v0.1.2-rc.1 及以上**。
 
 [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/)（DSH）Web UI 插件：从设置面板控制对话列宽。
 

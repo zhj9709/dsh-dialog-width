@@ -1,6 +1,6 @@
 # dsh-dialog-width
 
-> **Version requirement**: requires **DSH v0.1.2-alpha.5 or newer**.
+> **Version requirement**: requires **DSH v0.1.2-rc.1 or newer**.
 
 A [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/) (DSH) web plugin that controls the conversation column width from the Settings panel.
 
