@@ -1,6 +1,6 @@
 {
   "name": "dsh-dialog-width",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "DSH plugin: control the conversation column width — a pixel-value input (600–1600 px) with presets, plus a switch to toggle between plugin-driven width and DSH's native drag handles. Requires DSH v0.1.2-rc.1+.",
   "keywords": [
     "dsh",
