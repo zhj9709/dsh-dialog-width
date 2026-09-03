@@ -114,6 +114,12 @@ export function installConversationWidthStyles(widthPx: number, sideMargin: numb
   // the user's last choice in the native drag handles.
   try { localStorage.setItem(CONVERSATION_WIDTH_STORAGE_KEY, `${widthPx}`) } catch { /* storage may be disabled; ignore */ }
 
+  // Track the latest applied width so dispose() can seed the conversation
+  // root with the value the user most recently picked, not the value at
+  // install time (setWidth mutates this; the constructor's widthPx would
+  // otherwise be stale across stepper clicks).
+  let currentWidth = widthPx
+
   const apply = (px: number, margin: number): void => {
     style!.textContent = buildWidthCss(px, margin)
     // Belt-and-suspenders: also set the var directly on :root in case any
@@ -124,10 +130,23 @@ export function installConversationWidthStyles(widthPx: number, sideMargin: numb
 
   return {
     setWidth: (px: number, margin: number): void => {
+      currentWidth = px
       apply(px, margin)
       try { localStorage.setItem(CONVERSATION_WIDTH_STORAGE_KEY, `${px}`) } catch { /* ignore */ }
     },
     dispose: (): void => {
+      // Before removing the !important clamp rule, seed --dsh-chat-user-width
+      // directly on the conversation root so the column keeps the user's
+      // chosen width instead of falling back to DSH's adaptive clamp
+      // (resolveContentWidth would otherwise shrink it to fit the live
+      // column, which is wrong when the user explicitly chose a wider value
+      // and just wants to hand control back to the native drag handles).
+      // The root is identified by [data-phase] (ConversationRoot.tsx) and is
+      // the same element DSH writes the var on in publishWidths().
+      const root = document.querySelector('[data-conversation-scroll]')?.closest<HTMLElement>('[data-phase]') ?? null
+      if (root !== null) {
+        root.style.setProperty('--dsh-chat-user-width', `${currentWidth}px`)
+      }
       style?.remove()
       document.documentElement.style.removeProperty('--dsh-dialog-width-chat-width')
     },
